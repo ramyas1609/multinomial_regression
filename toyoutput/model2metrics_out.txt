@@ -1,0 +1,6 @@
+Epoch=1 likelihood train: 0.627158
+Epoch=1 likelihood validation: 1.092930
+Epoch=2 likelihood train: 0.304670
+Epoch=2 likelihood validation: 0.494172
+Train error: 0.101852
+Test error: 0.000000
