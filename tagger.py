@@ -1,15 +1,58 @@
-import sys, math
+from math import *
 import numpy as np
+import sys
+
+train_words = []
+train_labels = []
+train_words_unique = []
+train_labels_unique = []
+train_feature_vector = []
+t_l = []
+train_error = None
+
+validation_words =[]
+validation_labels = []
+validation_feature_vector = []
+v_l = []
+
+test_words = []
+test_labels = []
+test_feature_vector = []
+test_error = None
 
 
-def parse_train_tsv(filename,model):
-    words = []
-    labels = []
-    if model == int(2):
-        words_unique = ["BOS", "EOS"]
-    else:
-        words_unique = []
-    labels_unique = []
+def parse_train_tsv(filename):
+    tsv_file = open(filename, "r")
+
+    for line in tsv_file.readlines():
+        if line == "\n":
+            train_words.append("BlankLine")
+            train_labels.append("BlankLine")
+            continue
+
+        elements = line.rstrip().split("\t")
+        word = elements[0]
+        label = elements[1]
+
+        train_words.append(word)
+        if word not in train_words_unique:
+            train_words_unique.append(word)
+
+        train_labels.append(label)
+        if label not in train_labels_unique:
+            train_labels_unique.append(label)
+
+    train_labels_unique.sort()
+
+
+def parse_tsv(filename, type):
+    if type == "validation":
+        words = validation_words
+        labels = validation_labels
+    elif type == "test":
+        words = test_words
+        labels = test_labels
+
     tsv_file = open(filename, "r")
     for line in tsv_file.readlines():
         if line == "\n":
@@ -18,259 +61,389 @@ def parse_train_tsv(filename,model):
             continue
 
         elements = line.rstrip().split("\t")
-        word = elements[0]
-        label = elements[1]
-
-        words.append(word)
-        if word not in words_unique:
-            words_unique.append(word)
-
-        labels.append(label)
-        if label not in labels_unique:
-            labels_unique.append(label)
-
-    labels_unique.sort()
+        words.append(elements[0])
+        labels.append(elements[1])
     tsv_file.close()
-    return words, labels, words_unique, labels_unique
 
 
-def parse_tsv(filename):
-    words = []
-    labels = []
-    tsv_file = open(filename, "r")
-    for line in tsv_file.readlines():
-        if line == "\n":
-            words.append("BlankLine")
-            labels.append("BlankLine")
-            continue
+def construct_feature_vector(model, type):
+    if type == "train":
+        train_words_unique.append("BOS")
+        train_words_unique.append("EOS")
+        words = train_words
+        feature_vector = train_feature_vector
+    elif type == "validation":
+        words = validation_words
+        feature_vector = validation_feature_vector
+    elif type == "test":
+        words = test_words
+        feature_vector = test_feature_vector
 
-        elements = line.rstrip().split("\t")
-        word = elements[0]
-        label = elements[1]
-        words.append(word)
-        labels.append(label)
-    tsv_file.close()
-    return words, labels
-
-
-def construct_feature_vector(words, words_unique, model):
-    feature_vector = []
-    for i in xrange(0, len(words)):
-        if model == int(2):
+    if model == 2:
+        tw_l = len(words)
+        for i in xrange(0, tw_l):
             if words[i] == "BlankLine":
                 feature_vector.append(-1)
                 continue
             if i == 0:
-                m = [words_unique.index("BOS"), words_unique.index(words[i]), words_unique.index(words[i + 1])]
-            elif i == len(words) - 1:
-                m = [words_unique.index(words[i - 1]), words_unique.index(words[i]), words_unique.index("EOS")]
+                m = [train_words_unique.index("BOS"), train_words_unique.index(words[i]), train_words_unique.index(words[i + 1])]
+            elif i == tw_l - 1:
+                m = [train_words_unique.index(words[i - 1]), train_words_unique.index(words[i]), train_words_unique.index("EOS")]
             else:
-                if words[i-1] == "BlankLine":
-                    m = [words_unique.index("BOS"),words_unique.index(words[i]), words_unique.index(words[i+1])]
-                elif words[i+1] == "BlankLine":
-                    m = [words_unique.index(words[i-1]), words_unique.index(words[i]), words_unique.index("EOS")]
+                if words[i - 1] == "BlankLine":
+                    m = [train_words_unique.index("BOS"), train_words_unique.index(words[i]), train_words_unique.index(words[i + 1])]
+                elif words[i + 1] == "BlankLine":
+                    m = [train_words_unique.index(words[i - 1]), train_words_unique.index(words[i]), train_words_unique.index("EOS")]
                 else:
-                    m = [words_unique.index(words[i-1]), words_unique.index(words[i]), words_unique.index(words[i+1])]
-        else:
-            if words[i] == "BlankLine":
+                    m = [train_words_unique.index(words[i - 1]), train_words_unique.index(words[i]), train_words_unique.index(words[i + 1])]
+            feature_vector.append(m)
+    else:
+        for word in words:
+            if word == "BlankLine":
                 m = -1
             else:
-                m = words_unique.index(words[i])
-        feature_vector.append(m)
-
-    return feature_vector
+                m = train_words_unique.index(word)
+            feature_vector.append(m)
 
 
-def calculate_theta(epoch, feature_vector, labels, labels_unique, words_unique, model):
-    if model == int(2):
-        theta = np.zeros(shape=((3 * len(words_unique)) + 1, len(labels_unique)))
-        temp_theta = np.zeros(shape=((3 * len(words_unique)) + 1, len(labels_unique)))
-    else:
-        theta = np.zeros(shape=(len(words_unique) + 1, len(labels_unique)))
-        temp_theta = np.zeros(shape=(len(words_unique) + 1, len(labels_unique)))
+def calculate_theta_1():
 
-    for z in xrange(0, epoch):
-        for i in xrange(0, len(labels)):
-            if labels[i] == "BlankLine":
+    theta = np.zeros(shape=(len(train_labels_unique), len(train_words_unique) + 1))
+    temp_theta = np.zeros(shape=(len(train_labels_unique), len(train_words_unique) + 1))
+
+    twu_l = len(train_words_unique)
+    tl_l = len(train_labels)
+    tlu_l = len(train_labels_unique)
+
+    bias = twu_l
+
+    for z in xrange(0, num_epoch):
+
+        for i in xrange(0, tl_l):
+
+            if train_labels[i] == "BlankLine":
                 continue
+
             temp_theta.fill(0)
-            for k in xrange(0, len(labels_unique)):
-                j_theta = calculate_gradient(i, k, theta, feature_vector, labels, labels_unique, words_unique, model)
-                temp_theta[:, k] = 0.5 * j_theta
+            m = train_feature_vector[i]
+
+            denominator = 0
+            for j in xrange(0, tlu_l):
+                denominator = denominator + exp(theta[j][m] + theta[j][bias])
+
+            for k in xrange(0, tlu_l):
+                if train_labels[i] == train_labels_unique[k]:
+                    indicator = 1
+                else:
+                    indicator = 0
+
+                numerator = exp(theta[k][m] + theta[k][bias])
+                t = -(indicator - (numerator / denominator))
+                temp_theta[k][m], temp_theta[k][bias] = 0.5 * t, 0.5 * t
             theta = theta - temp_theta
+        t_l.append(calculate_train_likelihood_1(theta))
+        v_l.append(calculate_validation_likelihood_1(theta))
     return theta
 
 
-def calculate_gradient(i, k, theta, feature_vector, labels, labels_unique, words_unique, model):
-    if model == int(2):
-        j_theta = np.zeros(shape=(3 * (len(words_unique)) + 1))
-        bias = 3 * (len(words_unique))
-    else:
-        j_theta = np.zeros(shape=(len(words_unique) + 1))
-        bias = len(words_unique)
-
-    if labels[i] == labels_unique[k]:
-        indicator = 1
-    else:
-        indicator = 0
-
-    m = feature_vector[i]
-    theta_k_t = theta[:, k]. transpose()
-    if model == int(2):
-        theta_k_t_x_i = theta_k_t[m[0]] + theta_k_t[m[1] + len(words_unique)] + theta_k_t[m[2] + (2 * len(words_unique))] + theta_k_t[bias]
-    else:
-        theta_k_t_x_i = theta_k_t[m] + theta_k_t[bias]
-    numerator = math.exp(theta_k_t_x_i)
-    denominator = 0
-    for j in xrange(0, len(labels_unique)):
-        theta_j_t = theta[:, j].transpose()
-        if model == int(2):
-            theta_j_t_x_i = theta_j_t[m[0]] + theta_j_t[m[1]+len(words_unique)] + theta_j_t[m[2]+(2*len(words_unique))] + theta_j_t[bias]
-        else:
-            theta_j_t_x_i = theta_j_t[m] + theta_j_t[bias]
-        denominator = denominator + math.exp(theta_j_t_x_i)
-
-    t = -(indicator - (numerator / denominator))
-    if model == int(2):
-        j_theta[m[0]], j_theta[m[1]+len(words_unique)], j_theta[m[2]+(2*len(words_unique))], j_theta[bias] = t, t, t, t
-    else:
-        j_theta[m], j_theta[bias] = t, t
-    #print i, k, indicator, numerator, denominator, numerator / denominator, m, j_theta
-    return j_theta
-
-
-def calculate_likelihood(theta, feature_vector, labels, labels_unique, words, words_unique, model):
+def calculate_train_likelihood_1(theta):
     likelihood = 0.0
     n = 0
-    for i in xrange(0, len(words)):
-        if words[i] == "BlankLine":
+    i0 = len(train_labels)
+    k0 = len(train_labels_unique)
+    w0 = len(train_words_unique)
+    bias = w0
+    for i in xrange(0, i0):
+        if train_words[i] == "BlankLine":
             continue
         n = n + 1
-        m = feature_vector[i]
-        if model == int(2):
-            m[1] = m[1] + len(words_unique)
-            m[2] = m[2] + (2 * len(words_unique))
-            bias = 3*len(words_unique)
-        else:
-            bias = len(words_unique)
+        m = train_feature_vector[i]
 
-        for k in xrange(0, len(labels_unique)):
-            if labels[i] == labels_unique[k]:
-                indicator = 1
-            else:
-                indicator = 0
+        denominator = 0
+        for j in xrange(0, k0):
+            denominator = denominator + exp(theta[j][m] + theta[j][bias])
 
-            theta_k_t = theta[:, k].transpose()
-            if model == int(2):
-                theta_k_t_x_i = theta_k_t[m[0]] + theta_k_t[m[1]] + theta_k_t[m[2]] + theta_k_t[bias]
-            else:
-                theta_k_t_x_i = theta_k_t[m] + theta_k_t[bias]
-            numerator = math.exp(theta_k_t_x_i)
+        for k in xrange(0, k0):
+            if train_labels[i] != train_labels_unique[k]:
+                continue
+            numerator = exp(theta[k][m] + theta[k][bias])
+            likelihood = likelihood + (log(numerator / denominator))
+
+    return "{:.6f}".format(round(-likelihood / n, 6))
+
+
+def calculate_validation_likelihood_1(theta):
+    likelihood = 0.0
+    n = 0
+    i0 = len(validation_labels)
+    k0 = len(train_labels_unique)
+    w0 = len(train_words_unique)
+    bias = w0
+    for i in xrange(0, i0):
+        if validation_words[i] == "BlankLine":
+            continue
+        n = n + 1
+        m = validation_feature_vector[i]
+
+        denominator = 0
+        for j in xrange(0, k0):
+            denominator = denominator + exp(theta[j][m] + theta[j][bias])
+
+        for k in xrange(0, k0):
+            if validation_labels[i] != train_labels_unique[k]:
+                continue
+            numerator = exp(theta[k][m] + theta[k][bias])
+            likelihood = likelihood + (log(numerator / denominator))
+
+    return "{:.6f}".format(round(-likelihood / n, 6))
+
+
+def calculate_theta_2():
+
+    theta = np.zeros(shape=(len(train_labels_unique), 3 * len(train_words_unique) + 1))
+    temp_theta = np.zeros(shape=(len(train_labels_unique), 3 * len(train_words_unique) + 1))
+
+    twu_l = len(train_words_unique)
+    tl_l = len(train_labels)
+    tlu_l = len(train_labels_unique)
+
+    bias = 3 * twu_l
+
+    for z in xrange(0, num_epoch):
+
+        for i in xrange(0, tl_l):
+
+            if train_labels[i] == "BlankLine":
+                continue
+
+            temp_theta.fill(0)
+            m = train_feature_vector[i]
+            m0 = m[0]
+            m1 = m[1] + twu_l
+            m2 = m[2] + (2 * twu_l)
+
             denominator = 0
-            for j in xrange(0, len(labels_unique)):
-                theta_j_t = theta[:, j].transpose()
-                if model == int(2):
-                    theta_j_t_x_i = theta_j_t[m[0]] + theta_j_t[m[1]] + theta_j_t[m[2]] + theta_j_t[bias]
+            for j in xrange(0, tlu_l):
+                denominator = denominator + exp(theta[j][m0] + theta[j][m1] + theta[j][m2] + theta[j][bias])
+
+            for k in xrange(0, tlu_l):
+                if train_labels[i] == train_labels_unique[k]:
+                    indicator = 1
                 else:
-                    theta_j_t_x_i = theta_j_t[m] + theta_j_t[bias]
-                denominator = denominator + math.exp(theta_j_t_x_i)
-            likelihood = likelihood + (indicator * math.log(numerator/denominator))
-    return "{:.6f}".format(round(-likelihood/n, 6))
+                    indicator = 0
+
+                numerator = exp(theta[k][m0] + theta[k][m1] + theta[k][m2] + theta[k][bias])
+                t = -(indicator - (numerator / denominator))
+                temp_theta[k][m0], temp_theta[k][m1], temp_theta[k][m2], temp_theta[k][bias] = 0.5 * t, 0.5 * t, 0.5 * t, 0.5 * t
+
+            theta = theta - temp_theta
+
+        t_l.append(calculate_train_likelihood_2(theta))
+        v_l.append(calculate_validation_likelihood_2(theta))
+    return theta
 
 
-def prediction_model_1(theta, words, words_unique, labels, labels_unique):
-    pd = {}
-    for i in xrange(0, len(words_unique)):
-        pd_i = []
-        m = i
-        bias = len(words_unique)
-        for k in xrange(0, len(labels_unique)):
-            theta_k_t = theta[:, k].transpose()
-            theta_k_t_x_i = theta_k_t[m] + theta_k_t[bias]
-            numerator = math.exp(theta_k_t_x_i)
-            denominator = 0
-            for j in xrange(0, len(labels_unique)):
-                theta_j_t = theta[:, j].transpose()
-                theta_j_t_x_i = theta_j_t[m] + theta_j_t[bias]
-                denominator = denominator + math.exp(theta_j_t_x_i)
-            pd_i.append(numerator/denominator)
-        pd[words_unique[i]] = pd_i
+def calculate_train_likelihood_2(theta):
+    likelihood = 0.0
+    n = 0
+    tl_l = len(train_labels)
+    tlu_l = len(train_labels_unique)
+    twu_l = len(train_words_unique)
+    bias = 3 * twu_l
 
-    num_error = 0.0
-    n = 0.0
-    predicted_labels = []
-    for word in words:
-        if word == "BlankLine":
-            predicted_labels.append("\n")
+    for i in xrange(0, tl_l):
+        if train_words[i] == "BlankLine":
             continue
-        pd_i = pd[word]
-        max_p, index = 0, 0
-        for i in xrange(0, len(pd_i)):
-            if pd_i[i] > max_p:
-                max_p = pd_i[i]
-                index = i
-        predicted_labels.append(labels_unique[index])
         n = n + 1
-        if labels[words.index(word)] != labels_unique[index]:
-            num_error = num_error + 1
+        m = train_feature_vector[i]
+        m0 = m[0]
+        m1 = m[1] + twu_l
+        m2 = m[2] + (2 * twu_l)
 
-    error = num_error / n
-    return predicted_labels, "{:.6f}".format(round(error, 6))
+        denominator = 0
+        for j in xrange(0, tlu_l):
+            denominator = denominator + exp(theta[j][m0] + theta[j][m1] + theta[j][m2] + theta[j][bias])
+
+        for k in xrange(0, tlu_l):
+            if train_labels[i] != train_labels_unique[k]:
+                continue
+            numerator = exp(theta[k][m0] + theta[k][m1] + theta[k][m2] + theta[k][bias])
+            likelihood = likelihood + (log(numerator / denominator))
+
+    return "{:.6f}".format(round(-likelihood / n, 6))
 
 
-def prediction_model_2(theta, words, words_unique, labels, labels_unique, feature_vector):
-    num_error = 0.0
-    n = 0.0
-    predicted_labels = []
-    for i in xrange(0, len(words)):
-        if words[i] == "BlankLine":
-            predicted_labels.append("\n")
+def calculate_validation_likelihood_2(theta):
+    likelihood = 0.0
+    n = 0
+    vl_l = len(validation_labels)
+    tlu_l = len(train_labels_unique)
+    twu_l = len(train_words_unique)
+    bias = 3 * twu_l
+
+    for i in xrange(0, vl_l):
+        if validation_words[i] == "BlankLine":
             continue
-        bias = 3*len(words_unique)
-        m = feature_vector[i]
-        m[1] = m[0] + len(words_unique)
-        m[2] = m[0] + 2*(len(words_unique))
-        pd_i = []
-        for k in xrange(0, len(labels_unique)):
-            theta_k_t = theta[:, k].transpose()
-            theta_k_t_x_i = theta_k_t[m[0]] + theta_k_t[m[1]] + theta_k_t[m[2]] + theta_k_t[bias]
-            numerator = math.exp(theta_k_t_x_i)
-            denominator = 0
-            for j in xrange(0, len(labels_unique)):
-                theta_j_t = theta[:, j].transpose()
-                theta_j_t_x_i = theta_j_t[m[0]] + theta_j_t[m[1]] + theta_j_t[m[2]] + theta_j_t[bias]
-                denominator = denominator + math.exp(theta_j_t_x_i)
-            pd_i.append(numerator / denominator)
-
-        max_p, index = 0, 0
-        for i in xrange(0, len(pd_i)):
-            if pd_i[i] > max_p:
-                max_p = pd_i[i]
-                index = i
-        predicted_labels.append(labels_unique[index])
         n = n + 1
-        if labels[words.index(words[i])] != labels_unique[index]:
+        m = validation_feature_vector[i]
+        m0 = m[0]
+        m1 = m[1] + twu_l
+        m2 = m[2] + (2 * twu_l)
+
+        denominator = 0
+        for j in xrange(0, tlu_l):
+            denominator = denominator + exp(theta[j][m0] + theta[j][m1] + theta[j][m2] + theta[j][bias])
+
+        for k in xrange(0, tlu_l):
+            if validation_labels[i] != train_labels_unique[k]:
+                continue
+            numerator = exp(theta[k][m0] + theta[k][m1] + theta[k][m2] + theta[k][bias])
+            likelihood = likelihood + (log(numerator / denominator))
+
+    return "{:.6f}".format(round(-likelihood / n, 6))
+
+
+def predict_train_1(theta, filename):
+    num_error = 0
+    num_samples = 0
+    t_l_f = open(filename, "w")
+    tw_l = len(train_words)
+    tlu_l = len(train_labels_unique)
+    bias = len(train_words_unique)
+    for i in xrange(0, tw_l):
+        if train_words[i] == "BlankLine":
+            t_l_f.write("\n")
+            continue
+        num_samples = num_samples + 1
+        max_p = 0.0
+        max_index = 0
+        m = train_feature_vector[i]
+        denominator = 0
+        for j in xrange(0, tlu_l):
+            denominator = denominator + exp(theta[j][m] + theta[j][bias])
+        for k in xrange(0, tlu_l):
+            numerator = exp(theta[k][m] + theta[k][bias])
+            p = numerator/denominator
+            if p > max_p:
+                max_p = p
+                max_index = k
+        t_l_f.write(train_labels_unique[max_index]+"\n")
+        if train_labels[i] != train_labels_unique[max_index]:
             num_error = num_error + 1
-
-    error = num_error / n
-    return predicted_labels, "{:.6f}".format(round(error, 6))
-
-
-def write_labels_out(labels, filename):
-    labels_file = open(filename, "w")
-    for label in labels:
-        labels_file.write(label)
-        if label != "\n":
-            labels_file.write("\n")
-    labels_file.write("\n")
+    t_l_f.write("\n")
+    t_l_f.close()
+    return "{:.6f}".format(round(num_error*1.0/num_samples, 6))
 
 
-def write_metrics_out(filename, train_likelihoods, validation_likelihoods, train_error, test_error):
+def predict_test_1(theta, filename):
+    num_error = 0
+    num_samples = 0
+    t_l_f = open(filename, "w")
+    tw_l = len(test_words)
+    tlu_l = len(train_labels_unique)
+    bias = len(train_words_unique)
+    for i in xrange(0, tw_l):
+        if test_words[i] == "BlankLine":
+            t_l_f.write("\n")
+            continue
+        num_samples = num_samples + 1
+        max_p = 0.0
+        max_index = 0
+        m = test_feature_vector[i]
+        denominator = 0
+        for j in xrange(0, tlu_l):
+            denominator = denominator + exp(theta[j][m] + theta[j][bias])
+        for k in xrange(0, tlu_l):
+            numerator = exp(theta[k][m] + theta[k][bias])
+            p = numerator/denominator
+            if p > max_p:
+                max_p = p
+                max_index = k
+        t_l_f.write(train_labels_unique[max_index]+"\n")
+        if test_labels[i] != train_labels_unique[max_index]:
+            num_error = num_error + 1
+    t_l_f.write("\n")
+    t_l_f.close()
+    return "{:.6f}".format(round(num_error*1.0/num_samples, 6))
 
+
+def predict_train_2(theta, filename):
+    num_error = 0
+    num_samples = 0
+    t_l_f = open(filename, "w")
+    twu_l = len(train_words_unique)
+    tw_l = len(train_words)
+    tlu_l = len(train_labels_unique)
+    bias = 3 * twu_l
+    for i in xrange(0, tw_l):
+        if train_words[i] == "BlankLine":
+            t_l_f.write("\n")
+            continue
+        num_samples = num_samples + 1
+        max_p = 0.0
+        max_index = 0
+        m = train_feature_vector[i]
+        m0 = m[0]
+        m1 = m[1] + twu_l
+        m2 = m[2] + (2 * twu_l)
+        denominator = 0
+        for j in xrange(0, tlu_l):
+            denominator = denominator + exp(theta[j][m0] + theta[j][m1] + theta[j][m2] + theta[j][bias])
+        for k in xrange(0, tlu_l):
+            numerator = exp(theta[k][m0] + theta[k][m1] + theta[k][m2] + theta[k][bias])
+            p = numerator/denominator
+            if p > max_p:
+                max_p = p
+                max_index = k
+        t_l_f.write(train_labels_unique[max_index]+"\n")
+        if train_labels[i] != train_labels_unique[max_index]:
+            num_error = num_error + 1
+    t_l_f.write("\n")
+    t_l_f.close()
+    return "{:.6f}".format(round(num_error*1.0/num_samples, 6))
+
+
+def predict_test_2(theta, filename):
+    num_error = 0
+    num_samples = 0
+    t_l_f = open(filename, "w")
+    twu_l = len(train_words_unique)
+    tw_l = len(test_words)
+    tlu_l = len(train_labels_unique)
+    bias = 3 * twu_l
+    for i in xrange(0, tw_l):
+        if test_words[i] == "BlankLine":
+            t_l_f.write("\n")
+            continue
+        num_samples = num_samples + 1
+        max_p = 0.0
+        max_index = 0
+        m = test_feature_vector[i]
+        m0 = m[0]
+        m1 = m[1] + twu_l
+        m2 = m[2] + (2 * twu_l)
+        denominator = 0
+        for j in xrange(0, tlu_l):
+            denominator = denominator + exp(theta[j][m0] + theta[j][m1] + theta[j][m2] + theta[j][bias])
+        for k in xrange(0, tlu_l):
+            numerator = exp(theta[k][m0] + theta[k][m1] + theta[k][m2] + theta[k][bias])
+            p = numerator/denominator
+            if p > max_p:
+                max_p = p
+                max_index = k
+        t_l_f.write(train_labels_unique[max_index]+"\n")
+        if test_labels[i] != train_labels_unique[max_index]:
+            num_error = num_error + 1
+    t_l_f.write("\n")
+    t_l_f.close()
+    return "{:.6f}".format(round(num_error*1.0/num_samples, 6))
+
+
+def write_metrics(filename):
     metrics_file = open(filename, "w")
     for i in xrange(0, len(t_l)):
-        metrics_file.write("Epoch=" + str(i + 1) + " likelihood train: "+str(train_likelihoods[i])+"\n")
-        metrics_file.write("Epoch=" + str(i + 1) + " likelihood validation: " + str(validation_likelihoods[i]) + "\n")
+        metrics_file.write("Epoch=" + str(i + 1) + " likelihood train: "+str(t_l[i])+"\n")
+        metrics_file.write("Epoch=" + str(i + 1) + " likelihood validation: " + str(v_l[i]) + "\n")
 
     metrics_file.write("Train error: "+str(train_error)+"\n")
     metrics_file.write("Test error: "+str(test_error)+"\n")
@@ -286,51 +459,25 @@ metrics = sys.argv[6]
 num_epoch = int(sys.argv[7])
 model_number = int(sys.argv[8])
 
-train_words, train_labels, train_words_unique, train_labels_unique = parse_train_tsv(train_tsv, model_number)
-train_feature_vector = construct_feature_vector(train_words, train_words_unique, model_number)
 
-validation_words, validation_labels = parse_tsv(validation_tsv)
-validation_feature_vector = construct_feature_vector(validation_words, train_words_unique, model_number)
+parse_train_tsv(train_tsv)
+construct_feature_vector(model_number, "train")
 
-t_l = []
-v_l = []
+parse_tsv(validation_tsv, "validation")
+construct_feature_vector(model_number, "validation")
 
-for ne in xrange(1, num_epoch+1):
+parse_tsv(test_tsv,"test")
+construct_feature_vector(model_number, "test")
 
-    theta0 = calculate_theta(ne, train_feature_vector, train_labels, train_labels_unique, train_words_unique,
-                             model_number)
-    train_likelihood = calculate_likelihood(theta0, train_feature_vector, train_labels,
-                                            train_labels_unique, train_words, train_words_unique, model_number)
-
-    t_l.append(train_likelihood)
-    if model_number == int(1):
-        train_predicted_labels, train_error = prediction_model_1(theta0, train_words, train_words_unique, train_labels,
-                                                                 train_labels_unique)
-    else:
-        train_predicted_labels, train_error = prediction_model_2(theta0, train_words, train_words_unique, train_labels,
-                                                                 train_labels_unique, train_feature_vector)
-        print train_predicted_labels, train_error
-
-    validation_likelihood = calculate_likelihood(theta0, validation_feature_vector, validation_labels,
-                                                 train_labels_unique, validation_words, train_words_unique, model_number)
-
-    v_l.append(validation_likelihood)
-
-
-write_labels_out(train_predicted_labels, train_out)
-
-test_words, test_labels = parse_tsv(test_tsv)
-test_feature_vector = construct_feature_vector(test_words, train_words_unique, model_number)
-
-test_likelihood = calculate_likelihood(theta0, test_feature_vector, test_labels,
-                                       train_labels_unique, test_words, train_words_unique, model_number)
-if model_number == int(1):
-    test_predicted_labels, test_error = prediction_model_1(theta0, test_words, train_words_unique, test_labels, train_labels_unique)
+if model_number == 1:
+    t1 = calculate_theta_1()
+    train_error = predict_train_1(t1, train_out)
+    test_error = predict_test_1(t1, test_out)
 else:
-    test_predicted_labels, test_error = prediction_model_2(theta0, test_words, train_words_unique, test_labels,
-                                                           train_labels_unique, train_feature_vector)
+    t2 = calculate_theta_2()
+    train_error = predict_train_2(t2, train_out)
+    test_error = predict_test_2(t2, test_out)
 
-write_labels_out(test_predicted_labels, test_out)
+write_metrics(metrics)
 
 
-write_metrics_out(metrics, t_l, v_l, train_error, test_error)
